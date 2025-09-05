@@ -1,6 +1,5 @@
 agent_name: bigfootgolf-agent
 auth:
-    aws_profile_env: AWS_PROFILE
     github_token_env: GITHUB_TOKEN
 aws:
     lightsail:
@@ -24,6 +23,6 @@ claude:
 git:
     branch: main
     repository: https://github.com/jrzesz33/bigfootgolf
-    working_dir: ./workspace
+    working_dir: ./tmp
 log_level: info
 port: 8080

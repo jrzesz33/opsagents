@@ -46,15 +46,35 @@ func (d *DockerBuilder) CreateDockerfiles() error {
 }
 
 func (d *DockerBuilder) createGoAppDockerfile() error {
-	dockerfile := `FROM cgr.dev/chainguard/static:latest
+	dockerfile := `# Multi-stage build: First stage for building Go app
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /src
+
+# Copy go mod files first for better layer caching
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the Go application from web/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o app ./web/main.go
+
+# Second stage: Runtime
+FROM cgr.dev/chainguard/static:latest
 
 WORKDIR /app
 
-COPY build/bigfootgolf /app/bigfootgolf
+# Copy the built binary from builder stage
+COPY --from=builder /src/app /app/app
+
+# Copy public folder contents
+COPY public/ /app/public/
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/bigfootgolf"]
+ENTRYPOINT ["/app/app"]
 `
 	
 	dockerfilePath := filepath.Join(d.SourceDir, "Dockerfile.app")

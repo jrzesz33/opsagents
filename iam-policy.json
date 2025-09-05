@@ -1,0 +1,28 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "LightsailContainerServiceAccess",
+            "Effect": "Allow",
+            "Action": [
+                "lightsail:CreateContainerService",
+                "lightsail:CreateContainerServiceDeployment",
+                "lightsail:GetContainerServices",
+                "lightsail:GetContainerService",
+                "lightsail:UpdateContainerService",
+                "lightsail:DeleteContainerService",
+                "lightsail:GetContainerServiceDeployments"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "LightsailRegionAccess",
+            "Effect": "Allow", 
+            "Action": [
+                "lightsail:GetRegions",
+                "lightsail:GetAvailabilityZones"
+            ],
+            "Resource": "*"
+        }
+    ]
+}

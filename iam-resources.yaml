@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM resources for OpsAgents application - least privilege for Lightsail'
+
+Resources:
+  OpsAgentsLightsailPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: OpsAgentsLightsailPolicy
+      Description: 'Least privilege policy for OpsAgents application to manage Lightsail container services'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: LightsailContainerServiceAccess
+            Effect: Allow
+            Action:
+              - lightsail:CreateContainerService
+              - lightsail:CreateContainerServiceDeployment
+              - lightsail:GetContainerServices
+              - lightsail:GetContainerService
+              - lightsail:UpdateContainerService
+              - lightsail:DeleteContainerService
+              - lightsail:GetContainerServiceDeployments
+            Resource: '*'
+          - Sid: LightsailRegionAccess
+            Effect: Allow
+            Action:
+              - lightsail:GetRegions
+              - lightsail:GetAvailabilityZones
+            Resource: '*'
+
+  OpsAgentsUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: opsagents-app-user
+      ManagedPolicyArns:
+        - !Ref OpsAgentsLightsailPolicy
+      Tags:
+        - Key: Application
+          Value: OpsAgents
+        - Key: Purpose
+          Value: LightsailDeployment
+
+  OpsAgentsAccessKey:
+    Type: AWS::IAM::AccessKey
+    Properties:
+      UserName: !Ref OpsAgentsUser
+
+Outputs:
+  PolicyArn:
+    Description: ARN of the created IAM policy
+    Value: !Ref OpsAgentsLightsailPolicy
+    Export:
+      Name: OpsAgentsLightsailPolicyArn
+  
+  UserName:
+    Description: Name of the created IAM user
+    Value: !Ref OpsAgentsUser
+    Export:
+      Name: OpsAgentsUserName
+  
+  AccessKeyId:
+    Description: Access Key ID for the IAM user
+    Value: !Ref OpsAgentsAccessKey
+    Export:
+      Name: OpsAgentsAccessKeyId
+  
+  SecretAccessKey:
+    Description: Secret Access Key for the IAM user (retrieve from CloudFormation console)
+    Value: !GetAtt OpsAgentsAccessKey.SecretAccessKey
+    Export:
+      Name: OpsAgentsSecretAccessKey

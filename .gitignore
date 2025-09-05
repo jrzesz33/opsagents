@@ -1,7 +1,7 @@
-/.claude
-/.github
 /go.sum
 .vscode/launch.json
 .env.example
 build/opsagents
+.env
+.claude/.fuse_hidden000001e400000004
 build/opsagents

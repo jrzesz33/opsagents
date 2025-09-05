@@ -7,13 +7,14 @@ import (
 	"os"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/service/lightsail/types"
-	"github.com/spf13/cobra"
 	"opsagents/internal/config"
 	"opsagents/pkg/agent"
 	"opsagents/pkg/builder"
 	"opsagents/pkg/deploy"
 	"opsagents/pkg/git"
+
+	"github.com/aws/aws-sdk-go-v2/service/lightsail/types"
+	"github.com/spf13/cobra"
 )
 
 func main() {
@@ -99,23 +100,23 @@ func runAgent() error {
 	fmt.Println("Type 'exit' or 'quit' to stop the agent")
 	fmt.Println("Available commands:")
 	fmt.Println("  - 'build the application' - Clone repo, build Go binary, create Docker images")
-	fmt.Println("  - 'deploy to production' - Deploy containers to AWS Lightsail")  
+	fmt.Println("  - 'deploy to production' - Deploy containers to AWS Lightsail")
 	fmt.Println("  - 'check deployment status' - Get current deployment status")
 	fmt.Println()
 
 	scanner := bufio.NewScanner(os.Stdin)
-	
+
 	for {
 		fmt.Print("You: ")
 		if !scanner.Scan() {
 			break
 		}
-		
+
 		input := strings.TrimSpace(scanner.Text())
 		if input == "" {
 			continue
 		}
-		
+
 		if input == "exit" || input == "quit" {
 			fmt.Println("👋 Goodbye!")
 			break
@@ -127,7 +128,7 @@ func runAgent() error {
 			fmt.Printf("Error: %v\n", err)
 			continue
 		}
-		
+
 		fmt.Println(response)
 		fmt.Println()
 	}
@@ -143,10 +144,10 @@ func runBuild() error {
 
 	// Get GitHub token from environment
 	gitToken := os.Getenv("GITHUB_TOKEN")
-	
+
 	// Initialize Git client
 	gitClient := git.New(".", gitToken)
-	
+
 	// Clone or pull repository
 	fmt.Printf("Working with repository: %s\n", cfg.Git.Repository)
 	if err := gitClient.CloneRepository(cfg.Git.Repository, cfg.Git.WorkingDir); err != nil {
@@ -157,16 +158,16 @@ func runBuild() error {
 	}
 
 	// Build Go binary
-	sourceDir := fmt.Sprintf("%s/%s", cfg.Git.WorkingDir, cfg.Build.AppName)
-	goBuilder := builder.NewGoBuilder(sourceDir, cfg.Build.OutputDir)
-	
-	if err := goBuilder.BuildBinary(cfg.Build.AppName); err != nil {
-		return fmt.Errorf("failed to build Go binary: %w", err)
-	}
+	//sourceDir := fmt.Sprintf("%s/%s", cfg.Git.WorkingDir, cfg.Build.AppName)
+	//goBuilder := builder.NewGoBuilder(sourceDir, cfg.Build.OutputDir)
+
+	//if err := goBuilder.BuildBinary(cfg.Build.AppName); err != nil {
+	//	return fmt.Errorf("failed to build Go binary: %w", err)
+	//}
 
 	// Create Docker images
 	dockerBuilder := builder.NewDockerBuilder(cfg.Git.WorkingDir)
-	
+
 	if err := dockerBuilder.CreateDockerfiles(); err != nil {
 		return fmt.Errorf("failed to create Dockerfiles: %w", err)
 	}

@@ -156,20 +156,9 @@ func (a *ClaudeAgent) executeBuildTool(toolUse ToolUse) (*ToolResult, error) {
 		}
 	}
 
-	// Build Go binary
-	sourceDir := fmt.Sprintf("%s/%s", a.config.Git.WorkingDir, a.config.Build.AppName)
-	goBuilder := builder.NewGoBuilder(sourceDir, a.config.Build.OutputDir)
-	
-	if err := goBuilder.BuildBinary(a.config.Build.AppName); err != nil {
-		return &ToolResult{
-			Type:      "tool_result",
-			ToolUseID: toolUse.ID,
-			Content:   fmt.Sprintf("Failed to build Go binary: %v", err),
-		}, nil
-	}
-
-	// Create Docker images
-	dockerBuilder := builder.NewDockerBuilder(a.config.Git.WorkingDir)
+	// Create Docker images (Go app will be built inside Docker)
+	workingDir := fmt.Sprintf("%s/%s", a.config.Git.WorkingDir, a.config.Build.AppName)
+	dockerBuilder := builder.NewDockerBuilder(workingDir)
 	
 	if err := dockerBuilder.CreateDockerfiles(); err != nil {
 		return &ToolResult{
@@ -200,7 +189,7 @@ func (a *ClaudeAgent) executeBuildTool(toolUse ToolUse) (*ToolResult, error) {
 	return &ToolResult{
 		Type:      "tool_result",
 		ToolUseID: toolUse.ID,
-		Content:   "Build completed successfully! Created Go binary and Docker images for both the application and Neo4j database.",
+		Content:   "Build completed successfully! Created Docker images for both the application (with Go app built from ./web/main.go and public folder) and Neo4j database.",
 	}, nil
 }
 

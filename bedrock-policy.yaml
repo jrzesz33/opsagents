@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Bedrock policy for OpsAgents Claude AI agent'
+
+Resources:
+  OpsAgentsBedrockPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: OpsAgentsBedrockPolicy
+      Description: 'Least privilege policy for OpsAgents Claude AI agent to invoke Bedrock models'
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: BedrockInvokeModel
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource:
+              - 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-*'
+              - 'arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-*'
+          - Sid: BedrockListModels
+            Effect: Allow
+            Action:
+              - bedrock:ListFoundationModels
+              - bedrock:GetFoundationModel
+            Resource: '*'
+
+Outputs:
+  BedrockPolicyArn:
+    Description: ARN of the created Bedrock IAM policy
+    Value: !Ref OpsAgentsBedrockPolicy
+    Export:
+      Name: OpsAgentsBedrockPolicyArn
