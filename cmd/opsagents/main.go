@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/lightsail/types"
 	"github.com/spf13/cobra"
 	"opsagents/internal/config"
+	"opsagents/pkg/agent"
 	"opsagents/pkg/builder"
 	"opsagents/pkg/deploy"
 	"opsagents/pkg/git"
@@ -15,13 +19,25 @@ import (
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "opsagents",
-		Short: "OpsAgents - Build and Deploy Automation Tool",
-		Long:  `A CLI tool to orchestrate building and deploying applications to AWS Lightsail`,
+		Short: "OpsAgents - Claude AI Agent for Build and Deploy Automation",
+		Long:  `An intelligent Claude AI agent that automates building and deploying applications to AWS Lightsail with natural language commands`,
+	}
+
+	var agentCmd = &cobra.Command{
+		Use:   "agent",
+		Short: "Start the Claude AI agent",
+		Long:  `Start an interactive session with the Claude AI agent to build and deploy applications`,
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := runAgent(); err != nil {
+				fmt.Printf("Agent failed: %v\n", err)
+				os.Exit(1)
+			}
+		},
 	}
 
 	var buildCmd = &cobra.Command{
 		Use:   "build",
-		Short: "Build application and Docker images",
+		Short: "Build application and Docker images (direct mode)",
 		Long:  `Pull from Git repository, build Go binary, and create Docker images`,
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("Starting build process...")
@@ -34,7 +50,7 @@ func main() {
 
 	var deployCmd = &cobra.Command{
 		Use:   "deploy",
-		Short: "Deploy to AWS Lightsail",
+		Short: "Deploy to AWS Lightsail (direct mode)",
 		Long:  `Deploy Docker containers to AWS Lightsail`,
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("Starting deployment...")
@@ -57,6 +73,7 @@ func main() {
 		},
 	}
 
+	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(buildCmd)
 	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(configCmd)
@@ -67,14 +84,68 @@ func main() {
 	}
 }
 
+func runAgent() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	claudeAgent, err := agent.NewClaudeAgent(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create Claude agent: %w", err)
+	}
+
+	fmt.Println("🤖 Claude OpsAgent - Your AI DevOps Assistant")
+	fmt.Println("Type 'exit' or 'quit' to stop the agent")
+	fmt.Println("Available commands:")
+	fmt.Println("  - 'build the application' - Clone repo, build Go binary, create Docker images")
+	fmt.Println("  - 'deploy to production' - Deploy containers to AWS Lightsail")  
+	fmt.Println("  - 'check deployment status' - Get current deployment status")
+	fmt.Println()
+
+	scanner := bufio.NewScanner(os.Stdin)
+	
+	for {
+		fmt.Print("You: ")
+		if !scanner.Scan() {
+			break
+		}
+		
+		input := strings.TrimSpace(scanner.Text())
+		if input == "" {
+			continue
+		}
+		
+		if input == "exit" || input == "quit" {
+			fmt.Println("👋 Goodbye!")
+			break
+		}
+
+		fmt.Print("🤖 Claude: ")
+		response, err := claudeAgent.SendMessage(context.Background(), input)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			continue
+		}
+		
+		fmt.Println(response)
+		fmt.Println()
+	}
+
+	return nil
+}
+
 func runBuild() error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Get GitHub token from environment
+	gitToken := os.Getenv("GITHUB_TOKEN")
+	
 	// Initialize Git client
-	gitClient := git.New(".")
+	gitClient := git.New(".", gitToken)
 	
 	// Clone or pull repository
 	fmt.Printf("Working with repository: %s\n", cfg.Git.Repository)

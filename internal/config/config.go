@@ -34,6 +34,18 @@ type Config struct {
 			Environment      map[string]string `mapstructure:"environment"`
 		} `mapstructure:"lightsail"`
 	} `mapstructure:"aws"`
+	
+	Claude struct {
+		Region      string  `mapstructure:"region"`
+		ModelID     string  `mapstructure:"model_id"`
+		Temperature float32 `mapstructure:"temperature"`
+		MaxTokens   int     `mapstructure:"max_tokens"`
+	} `mapstructure:"claude"`
+	
+	Auth struct {
+		GitHubTokenEnv string `mapstructure:"github_token_env"`
+		AWSProfileEnv  string `mapstructure:"aws_profile_env"`
+	} `mapstructure:"auth"`
 }
 
 func Load() (*Config, error) {
@@ -56,6 +68,12 @@ func Load() (*Config, error) {
 	viper.SetDefault("aws.lightsail.power", "nano")
 	viper.SetDefault("aws.lightsail.scale", 1)
 	viper.SetDefault("aws.lightsail.container_name", "bigfootgolf-app")
+	viper.SetDefault("claude.region", "us-east-1")
+	viper.SetDefault("claude.model_id", "anthropic.claude-3-sonnet-20240229-v1:0")
+	viper.SetDefault("claude.temperature", 0.1)
+	viper.SetDefault("claude.max_tokens", 4096)
+	viper.SetDefault("auth.github_token_env", "GITHUB_TOKEN")
+	viper.SetDefault("auth.aws_profile_env", "AWS_PROFILE")
 	
 	viper.AutomaticEnv()
 	
@@ -99,6 +117,16 @@ aws:
     environment:
       ENV: production
       PORT: "8080"
+
+claude:
+  region: us-east-1
+  model_id: anthropic.claude-3-sonnet-20240229-v1:0
+  temperature: 0.1
+  max_tokens: 4096
+
+auth:
+  github_token_env: GITHUB_TOKEN  # Environment variable for GitHub PAT
+  aws_profile_env: AWS_PROFILE    # Environment variable for AWS profile
 `
 	
 	viper.SetConfigType("yaml")

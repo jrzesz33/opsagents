@@ -1,3 +1,7 @@
 /.claude
 /.github
 /go.sum
+.vscode/launch.json
+.env.example
+build/opsagents
+build/opsagents
