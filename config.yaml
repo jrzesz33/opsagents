@@ -1,0 +1,21 @@
+agent_name: bigfootgolf-agent
+aws:
+    lightsail:
+        container_name: bigfootgolf-app
+        environment:
+            env: production
+            port: "8080"
+        power: nano
+        public_domain: bigfootgolf.example.com
+        scale: 1
+        service_name: bigfootgolf-service
+    region: us-east-1
+build:
+    app_name: bigfootgolf
+    output_dir: ./build
+git:
+    branch: main
+    repository: https://github.com/jrzesz33/bigfootgolf
+    working_dir: ./workspace
+log_level: info
+port: 8080
