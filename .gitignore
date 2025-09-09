@@ -5,3 +5,4 @@ build/opsagents
 .env
 .claude/.fuse_hidden000001e400000004
 build/opsagents
+IAM_CREDENTIALS_SUMMARY.md

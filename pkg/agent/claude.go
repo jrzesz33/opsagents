@@ -5,16 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
+
+	"opsagents/internal/config"
+	"opsagents/pkg/deploy"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/lightsail/types"
-	"opsagents/internal/config"
-	"opsagents/pkg/builder"
-	"opsagents/pkg/deploy"
-	"opsagents/pkg/git"
 )
 
 type ClaudeAgent struct {
@@ -71,20 +69,6 @@ func NewClaudeAgent(cfg *config.Config) (*ClaudeAgent, error) {
 func (a *ClaudeAgent) GetTools() []Tool {
 	return []Tool{
 		{
-			Name:        "build_application",
-			Description: "Build the application by cloning Git repository, building Go binary, and creating Docker images",
-			InputSchema: InputSchema{
-				Type: "object",
-				Properties: map[string]interface{}{
-					"force_rebuild": map[string]interface{}{
-						"type":        "boolean",
-						"description": "Whether to force a clean rebuild",
-					},
-				},
-				Required: []string{},
-			},
-		},
-		{
 			Name:        "deploy_application",
 			Description: "Deploy the application containers to AWS Lightsail",
 			InputSchema: InputSchema{
@@ -121,8 +105,6 @@ func (a *ClaudeAgent) GetTools() []Tool {
 
 func (a *ClaudeAgent) ExecuteTool(toolUse ToolUse) (*ToolResult, error) {
 	switch toolUse.Name {
-	case "build_application":
-		return a.executeBuildTool(toolUse)
 	case "deploy_application":
 		return a.executeDeployTool(toolUse)
 	case "get_deployment_status":
@@ -136,66 +118,10 @@ func (a *ClaudeAgent) ExecuteTool(toolUse ToolUse) (*ToolResult, error) {
 	}
 }
 
-func (a *ClaudeAgent) executeBuildTool(toolUse ToolUse) (*ToolResult, error) {
-	log.Println("Executing build_application tool")
-	
-	// Get GitHub token from environment
-	gitToken := os.Getenv("GITHUB_TOKEN")
-	
-	// Initialize Git client
-	gitClient := git.New(".", gitToken)
-	
-	// Clone or pull repository
-	if err := gitClient.CloneRepository(a.config.Git.Repository, a.config.Git.WorkingDir); err != nil {
-		if pullErr := gitClient.PullLatest(a.config.Git.WorkingDir); pullErr != nil {
-			return &ToolResult{
-				Type:      "tool_result",
-				ToolUseID: toolUse.ID,
-				Content:   fmt.Sprintf("Failed to clone and pull repository: %v", err),
-			}, nil
-		}
-	}
-
-	// Create Docker images (Go app will be built inside Docker)
-	workingDir := fmt.Sprintf("%s/%s", a.config.Git.WorkingDir, a.config.Build.AppName)
-	dockerBuilder := builder.NewDockerBuilder(workingDir)
-	
-	if err := dockerBuilder.CreateDockerfiles(); err != nil {
-		return &ToolResult{
-			Type:      "tool_result",
-			ToolUseID: toolUse.ID,
-			Content:   fmt.Sprintf("Failed to create Dockerfiles: %v", err),
-		}, nil
-	}
-
-	appImageName := fmt.Sprintf("%s-app", a.config.Build.AppName)
-	if err := dockerBuilder.BuildImage(appImageName, "Dockerfile.app"); err != nil {
-		return &ToolResult{
-			Type:      "tool_result",
-			ToolUseID: toolUse.ID,
-			Content:   fmt.Sprintf("Failed to build app Docker image: %v", err),
-		}, nil
-	}
-
-	neo4jImageName := fmt.Sprintf("%s-neo4j", a.config.Build.AppName)
-	if err := dockerBuilder.BuildImage(neo4jImageName, "Dockerfile.neo4j"); err != nil {
-		return &ToolResult{
-			Type:      "tool_result",
-			ToolUseID: toolUse.ID,
-			Content:   fmt.Sprintf("Failed to build Neo4j Docker image: %v", err),
-		}, nil
-	}
-
-	return &ToolResult{
-		Type:      "tool_result",
-		ToolUseID: toolUse.ID,
-		Content:   "Build completed successfully! Created Docker images for both the application (with Go app built from ./web/main.go and public folder) and Neo4j database.",
-	}, nil
-}
 
 func (a *ClaudeAgent) executeDeployTool(toolUse ToolUse) (*ToolResult, error) {
 	log.Println("Executing deploy_application tool")
-	
+
 	// Initialize Lightsail deployer
 	deployer, err := deploy.NewLightsailDeployer()
 	if err != nil {
@@ -219,7 +145,7 @@ func (a *ClaudeAgent) executeDeployTool(toolUse ToolUse) (*ToolResult, error) {
 		Scale:         a.config.AWS.Lightsail.Scale,
 		PublicDomain:  a.config.AWS.Lightsail.PublicDomain,
 		ContainerName: a.config.AWS.Lightsail.ContainerName,
-		ImageName:     fmt.Sprintf("%s-app:latest", a.config.Build.AppName),
+		ImageName:     a.config.Images.AppImage,
 		Ports: map[string]int32{
 			"8080": 8080,
 		},
@@ -265,7 +191,7 @@ func (a *ClaudeAgent) executeDeployTool(toolUse ToolUse) (*ToolResult, error) {
 
 func (a *ClaudeAgent) executeStatusTool(toolUse ToolUse) (*ToolResult, error) {
 	log.Println("Executing get_deployment_status tool")
-	
+
 	serviceName, ok := toolUse.Input["service_name"].(string)
 	if !ok {
 		return &ToolResult{
@@ -312,7 +238,7 @@ func (a *ClaudeAgent) executeStatusTool(toolUse ToolUse) (*ToolResult, error) {
 
 func (a *ClaudeAgent) SendMessage(ctx context.Context, message string) (string, error) {
 	tools := a.GetTools()
-	
+
 	requestBody := map[string]interface{}{
 		"anthropic_version": "bedrock-2023-05-31",
 		"max_tokens":        4096,
@@ -374,9 +300,9 @@ func (a *ClaudeAgent) processResponse(ctx context.Context, response map[string]i
 			}
 		case "tool_use":
 			toolUse := ToolUse{
-				Type: "tool_use",
-				ID:   itemMap["id"].(string),
-				Name: itemMap["name"].(string),
+				Type:  "tool_use",
+				ID:    itemMap["id"].(string),
+				Name:  itemMap["name"].(string),
 				Input: itemMap["input"].(map[string]interface{}),
 			}
 			toolCalls = append(toolCalls, toolUse)
@@ -394,7 +320,7 @@ func (a *ClaudeAgent) processResponse(ctx context.Context, response map[string]i
 				results = append(results, result.Content)
 			}
 		}
-		
+
 		if textResponse != "" {
 			textResponse += "\n\n"
 		}

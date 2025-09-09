@@ -23,6 +23,6 @@ claude:
 git:
     branch: main
     repository: https://github.com/jrzesz33/bigfootgolf
-    working_dir: ./tmp
+    working_dir: ../tmp
 log_level: info
 port: 8080
