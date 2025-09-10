@@ -12,12 +12,11 @@
 - ✅ Pay-per-use pricing model
 - ✅ Configurable temperature and token limits
 
-## AWS Lightsail Deployment
-- ✅ Containers deployed to Lightsail Container services
-- ✅ Database container with persistent volume mounts
-- ✅ Cost-efficient nano instance configuration
-- ✅ Health checks and monitoring enabled
-- ✅ Public domain configuration support
+## AWS ECS Fargate
+- An Amazon ECS Fargate needs to be Available and Ready
+- A new Task Definition for our Containers to be able to run within the same network
+- Two Container Definitions with the smallest and most cost efficient sizes needs to be created
+- Configure an Application Load Balancer to route traffic to the webapp container
 
 ## Implementation Status
 - ✅ Complete: Claude AI agent with natural language processing

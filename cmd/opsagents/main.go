@@ -11,7 +11,6 @@ import (
 	"opsagents/pkg/agent"
 	"opsagents/pkg/deploy"
 
-	"github.com/aws/aws-sdk-go-v2/service/lightsail/types"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +18,7 @@ func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "opsagents",
 		Short: "OpsAgents - Claude AI Agent for DevOps Automation",
-		Long:  `An intelligent Claude AI agent that automates deploying pre-built applications to AWS Lightsail with natural language commands`,
+		Long:  `An intelligent Claude AI agent that automates deploying pre-built applications to AWS ECS Fargate with natural language commands`,
 	}
 
 	var agentCmd = &cobra.Command{
@@ -36,8 +35,8 @@ func main() {
 
 	var deployCmd = &cobra.Command{
 		Use:   "deploy",
-		Short: "Deploy to AWS Lightsail (direct mode)",
-		Long:  `Deploy Docker containers to AWS Lightsail`,
+		Short: "Deploy to AWS ECS Fargate (direct mode)",
+		Long:  `Deploy Docker containers to AWS ECS Fargate`,
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println("Starting deployment...")
 			if err := runDeploy(); err != nil {
@@ -126,39 +125,50 @@ func runDeploy() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Initialize Lightsail deployer
-	deployer, err := deploy.NewLightsailDeployer()
+	// Initialize ECS deployer
+	deployer, err := deploy.NewECSDeployer()
 	if err != nil {
-		return fmt.Errorf("failed to initialize Lightsail deployer: %w", err)
+		return fmt.Errorf("failed to initialize ECS deployer: %w", err)
 	}
 
-	// Create container service configuration
-	serviceConfig := deploy.ContainerServiceConfig{
-		ServiceName:   cfg.AWS.Lightsail.ServiceName,
-		Power:         types.ContainerServicePowerName(cfg.AWS.Lightsail.Power),
-		Scale:         cfg.AWS.Lightsail.Scale,
-		PublicDomain:  cfg.AWS.Lightsail.PublicDomain,
-		ContainerName: cfg.AWS.Lightsail.ContainerName,
-		ImageName:     cfg.Images.AppImage,
-		Ports: map[string]int32{
-			"8080": 8080,
-		},
-		Environment: cfg.AWS.Lightsail.Environment,
+	// Create ECS configuration
+	ecsConfig := deploy.ECSConfig{
+		ClusterName:        cfg.AWS.ECS.ClusterName,
+		ServiceName:        cfg.AWS.ECS.ServiceName,
+		TaskDefinitionName: cfg.AWS.ECS.TaskDefinitionName,
+		VpcId:              cfg.AWS.ECS.VpcId,
+		SubnetIds:          cfg.AWS.ECS.SubnetIds,
+		SecurityGroupIds:   cfg.AWS.ECS.SecurityGroupIds,
+		LoadBalancerName:   cfg.AWS.ECS.LoadBalancerName,
+		WebAppImage:        cfg.Images.AppImage,
+		DatabaseImage:      cfg.Images.Neo4jImage,
+		WebAppPort:         cfg.AWS.ECS.WebAppPort,
+		DatabasePort:       cfg.AWS.ECS.DatabasePort,
+		WebAppMemory:       cfg.AWS.ECS.WebAppMemory,
+		WebAppCPU:          cfg.AWS.ECS.WebAppCPU,
+		DatabaseMemory:     cfg.AWS.ECS.DatabaseMemory,
+		DatabaseCPU:        cfg.AWS.ECS.DatabaseCPU,
+		Environment:        cfg.AWS.ECS.Environment,
 	}
 
-	// Create container service
-	if err := deployer.CreateContainerService(serviceConfig); err != nil {
-		fmt.Printf("Container service might already exist, continuing with deployment: %v\n", err)
+	// Create ECS cluster
+	if err := deployer.CreateCluster(ecsConfig.ClusterName); err != nil {
+		fmt.Printf("ECS cluster might already exist: %v\n", err)
 	}
 
-	// Deploy container
-	if err := deployer.DeployContainer(cfg.AWS.Lightsail.ServiceName, serviceConfig); err != nil {
-		return fmt.Errorf("failed to deploy container: %w", err)
+	// Create task definition
+	if err := deployer.CreateTaskDefinition(ecsConfig); err != nil {
+		return fmt.Errorf("failed to create task definition: %w", err)
 	}
 
-	// Wait for service to be ready
-	if err := deployer.WaitForServiceReady(cfg.AWS.Lightsail.ServiceName); err != nil {
-		return fmt.Errorf("failed waiting for service to be ready: %w", err)
+	// Create ECS service
+	if err := deployer.CreateService(ecsConfig); err != nil {
+		return fmt.Errorf("failed to create ECS service: %w", err)
+	}
+
+	// Wait for service to be stable
+	if err := deployer.WaitForServiceStable(ecsConfig.ClusterName, ecsConfig.ServiceName); err != nil {
+		return fmt.Errorf("failed waiting for service to be stable: %w", err)
 	}
 
 	fmt.Println("Deployment completed successfully!")

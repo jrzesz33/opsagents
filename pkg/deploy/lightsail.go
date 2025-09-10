@@ -3,9 +3,12 @@ package deploy
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/lightsail"
 	"github.com/aws/aws-sdk-go-v2/service/lightsail/types"
 )
@@ -16,7 +19,33 @@ type LightsailDeployer struct {
 }
 
 func NewLightsailDeployer() (*LightsailDeployer, error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+	// Load AWS config with explicit environment variable credentials
+	var cfg aws.Config
+	var err error
+	
+	// Check if we have environment variables for AWS credentials
+	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
+	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	region := os.Getenv("AWS_REGION")
+	
+	if region == "" {
+		region = "us-east-1" // Default region
+	}
+	
+	if accessKey != "" && secretKey != "" {
+		// Use static credentials from environment variables
+		cfg, err = config.LoadDefaultConfig(context.TODO(),
+			config.WithRegion(region),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
+		)
+	} else {
+		// Fall back to default credential chain (excluding IMDS)
+		cfg, err = config.LoadDefaultConfig(context.TODO(),
+			config.WithRegion(region),
+			config.WithEC2IMDSClientEnableState(imds.ClientDisabled),
+		)
+	}
+	
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}

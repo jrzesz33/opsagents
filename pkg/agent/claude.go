@@ -11,8 +11,10 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
-	"github.com/aws/aws-sdk-go-v2/service/lightsail/types"
+	"os"
 )
 
 type ClaudeAgent struct {
@@ -48,10 +50,33 @@ type ToolResult struct {
 }
 
 func NewClaudeAgent(cfg *config.Config) (*ClaudeAgent, error) {
-	// Load AWS config with environment variables
-	awsConfig, err := awsconfig.LoadDefaultConfig(context.TODO(),
-		awsconfig.WithRegion(cfg.Claude.Region),
-	)
+	// Load AWS config with explicit environment variable credentials
+	var awsConfig aws.Config
+	var err error
+	
+	// Check if we have environment variables for AWS credentials
+	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
+	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+	region := os.Getenv("AWS_REGION")
+	
+	if region == "" {
+		region = cfg.Claude.Region
+	}
+	
+	if accessKey != "" && secretKey != "" {
+		// Use static credentials from environment variables
+		awsConfig, err = awsconfig.LoadDefaultConfig(context.TODO(),
+			awsconfig.WithRegion(region),
+			awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
+		)
+	} else {
+		// Fall back to default credential chain (excluding IMDS)
+		awsConfig, err = awsconfig.LoadDefaultConfig(context.TODO(),
+			awsconfig.WithRegion(region),
+			awsconfig.WithEC2IMDSClientEnableState(imds.ClientDisabled),
+		)
+	}
+	
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
@@ -122,62 +147,77 @@ func (a *ClaudeAgent) ExecuteTool(toolUse ToolUse) (*ToolResult, error) {
 func (a *ClaudeAgent) executeDeployTool(toolUse ToolUse) (*ToolResult, error) {
 	log.Println("Executing deploy_application tool")
 
-	// Initialize Lightsail deployer
-	deployer, err := deploy.NewLightsailDeployer()
+	// Initialize ECS deployer
+	deployer, err := deploy.NewECSDeployer()
 	if err != nil {
 		return &ToolResult{
 			Type:      "tool_result",
 			ToolUseID: toolUse.ID,
-			Content:   fmt.Sprintf("Failed to initialize Lightsail deployer: %v", err),
+			Content:   fmt.Sprintf("Failed to initialize ECS deployer: %v", err),
 		}, nil
 	}
 
 	// Get service name from input or use default
-	serviceName := a.config.AWS.Lightsail.ServiceName
+	serviceName := a.config.AWS.ECS.ServiceName
 	if name, ok := toolUse.Input["service_name"].(string); ok && name != "" {
 		serviceName = name
 	}
 
-	// Create container service configuration
-	serviceConfig := deploy.ContainerServiceConfig{
-		ServiceName:   serviceName,
-		Power:         types.ContainerServicePowerName(a.config.AWS.Lightsail.Power),
-		Scale:         a.config.AWS.Lightsail.Scale,
-		PublicDomain:  a.config.AWS.Lightsail.PublicDomain,
-		ContainerName: a.config.AWS.Lightsail.ContainerName,
-		ImageName:     a.config.Images.AppImage,
-		Ports: map[string]int32{
-			"8080": 8080,
-		},
-		Environment: a.config.AWS.Lightsail.Environment,
+	// Create ECS configuration
+	ecsConfig := deploy.ECSConfig{
+		ClusterName:        a.config.AWS.ECS.ClusterName,
+		ServiceName:        serviceName,
+		TaskDefinitionName: a.config.AWS.ECS.TaskDefinitionName,
+		VpcId:              a.config.AWS.ECS.VpcId,
+		SubnetIds:          a.config.AWS.ECS.SubnetIds,
+		SecurityGroupIds:   a.config.AWS.ECS.SecurityGroupIds,
+		LoadBalancerName:   a.config.AWS.ECS.LoadBalancerName,
+		WebAppImage:        a.config.Images.AppImage,
+		DatabaseImage:      a.config.Images.Neo4jImage,
+		WebAppPort:         a.config.AWS.ECS.WebAppPort,
+		DatabasePort:       a.config.AWS.ECS.DatabasePort,
+		WebAppMemory:       a.config.AWS.ECS.WebAppMemory,
+		WebAppCPU:          a.config.AWS.ECS.WebAppCPU,
+		DatabaseMemory:     a.config.AWS.ECS.DatabaseMemory,
+		DatabaseCPU:        a.config.AWS.ECS.DatabaseCPU,
+		Environment:        a.config.AWS.ECS.Environment,
 	}
 
-	// Create container service
-	if err := deployer.CreateContainerService(serviceConfig); err != nil {
-		log.Printf("Container service might already exist: %v", err)
+	// Create ECS cluster
+	if err := deployer.CreateCluster(ecsConfig.ClusterName); err != nil {
+		log.Printf("ECS cluster might already exist: %v", err)
 	}
 
-	// Deploy container
-	if err := deployer.DeployContainer(serviceName, serviceConfig); err != nil {
+	// Create task definition
+	if err := deployer.CreateTaskDefinition(ecsConfig); err != nil {
 		return &ToolResult{
 			Type:      "tool_result",
 			ToolUseID: toolUse.ID,
-			Content:   fmt.Sprintf("Failed to deploy container: %v", err),
+			Content:   fmt.Sprintf("Failed to create task definition: %v", err),
 		}, nil
 	}
 
-	// Wait for service to be ready if requested
+	// Create ECS service
+	if err := deployer.CreateService(ecsConfig); err != nil {
+		return &ToolResult{
+			Type:      "tool_result",
+			ToolUseID: toolUse.ID,
+			Content:   fmt.Sprintf("Failed to create ECS service: %v", err),
+		}, nil
+	}
+
+	// Wait for service to be stable if requested
 	waitForReady := true
 	if wait, ok := toolUse.Input["wait_for_ready"].(bool); ok {
 		waitForReady = wait
 	}
 
 	if waitForReady {
-		if err := deployer.WaitForServiceReady(serviceName); err != nil {
+		if err := deployer.WaitForServiceStable(ecsConfig.ClusterName, serviceName); err != nil {
 			return &ToolResult{
 				Type:      "tool_result",
 				ToolUseID: toolUse.ID,
-				Content:   fmt.Sprintf("Failed waiting for service to be ready: %v", err),
+				Content:   fmt.Sprintf("Failed waiting for service to be stable: %v", err),
 			}, nil
 		}
 	}
@@ -185,7 +225,7 @@ func (a *ClaudeAgent) executeDeployTool(toolUse ToolUse) (*ToolResult, error) {
 	return &ToolResult{
 		Type:      "tool_result",
 		ToolUseID: toolUse.ID,
-		Content:   fmt.Sprintf("Deployment to service '%s' completed successfully!", serviceName),
+		Content:   fmt.Sprintf("ECS deployment to service '%s' completed successfully!", serviceName),
 	}, nil
 }
 
@@ -201,32 +241,24 @@ func (a *ClaudeAgent) executeStatusTool(toolUse ToolUse) (*ToolResult, error) {
 		}, nil
 	}
 
-	// Initialize Lightsail deployer
-	deployer, err := deploy.NewLightsailDeployer()
+	// Initialize ECS deployer
+	deployer, err := deploy.NewECSDeployer()
 	if err != nil {
 		return &ToolResult{
 			Type:      "tool_result",
 			ToolUseID: toolUse.ID,
-			Content:   fmt.Sprintf("Failed to initialize Lightsail deployer: %v", err),
+			Content:   fmt.Sprintf("Failed to initialize ECS deployer: %v", err),
 		}, nil
 	}
 
-	// Get service state
-	service, err := deployer.GetContainerServiceState(serviceName)
+	// Get service status
+	status, err := deployer.GetServiceStatus(a.config.AWS.ECS.ClusterName, serviceName)
 	if err != nil {
 		return &ToolResult{
 			Type:      "tool_result",
 			ToolUseID: toolUse.ID,
-			Content:   fmt.Sprintf("Failed to get service state: %v", err),
+			Content:   fmt.Sprintf("Failed to get service status: %v", err),
 		}, nil
-	}
-
-	status := fmt.Sprintf("Service: %s\nState: %s", serviceName, service.State)
-	if service.Url != nil {
-		status += fmt.Sprintf("\nURL: %s", *service.Url)
-	}
-	if service.CurrentDeployment != nil {
-		status += fmt.Sprintf("\nDeployment State: %s", service.CurrentDeployment.State)
 	}
 
 	return &ToolResult{

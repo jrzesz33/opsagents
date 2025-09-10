@@ -1,5 +1,6 @@
 agent_name: bigfootgolf-agent
 auth:
+    aws_profile_env: AWS_PROFILE
     github_token_env: GITHUB_TOKEN
 aws:
     lightsail:
@@ -12,17 +13,14 @@ aws:
         scale: 1
         service_name: bigfootgolf-service
     region: us-east-1
-build:
-    app_name: bigfootgolf
-    output_dir: ./build
 claude:
     max_tokens: 4096
     model_id: anthropic.claude-3-sonnet-20240229-v1:0
     region: us-east-1
     temperature: 0.1
-git:
-    branch: main
-    repository: https://github.com/jrzesz33/bigfootgolf
-    working_dir: ../tmp
+images:
+    app_image: your-registry/bigfootgolf-app:latest
+    neo4j_image: neo4j:5-community
+    registry: docker.io
 log_level: info
 port: 8080
