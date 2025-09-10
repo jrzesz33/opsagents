@@ -125,6 +125,24 @@ func (a *ClaudeAgent) GetTools() []Tool {
 				Required: []string{"service_name"},
 			},
 		},
+		{
+			Name:        "cleanup_resources",
+			Description: "Clean up all AWS ECS resources including services, clusters, load balancers, and log groups",
+			InputSchema: InputSchema{
+				Type: "object",
+				Properties: map[string]interface{}{
+					"confirm": map[string]interface{}{
+						"type":        "boolean",
+						"description": "Set to true to confirm resource deletion",
+					},
+					"service_name": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional service name to clean up specific resources",
+					},
+				},
+				Required: []string{"confirm"},
+			},
+		},
 	}
 }
 
@@ -134,6 +152,8 @@ func (a *ClaudeAgent) ExecuteTool(toolUse ToolUse) (*ToolResult, error) {
 		return a.executeDeployTool(toolUse)
 	case "get_deployment_status":
 		return a.executeStatusTool(toolUse)
+	case "cleanup_resources":
+		return a.executeCleanupTool(toolUse)
 	default:
 		return &ToolResult{
 			Type:      "tool_result",
@@ -188,16 +208,27 @@ func (a *ClaudeAgent) executeDeployTool(toolUse ToolUse) (*ToolResult, error) {
 		log.Printf("ECS cluster might already exist: %v", err)
 	}
 
-	// Create task definition
-	if err := deployer.CreateTaskDefinition(ecsConfig); err != nil {
-		return &ToolResult{
-			Type:      "tool_result",
-			ToolUseID: toolUse.ID,
-			Content:   fmt.Sprintf("Failed to create task definition: %v", err),
-		}, nil
+	// Use advanced deployment if advanced features are enabled
+	if ecsConfig.CreateSecrets || ecsConfig.CreateEFS {
+		if err := deployer.DeployAdvanced(ecsConfig); err != nil {
+			return &ToolResult{
+				Type:      "tool_result",
+				ToolUseID: toolUse.ID,
+				Content:   fmt.Sprintf("Failed to deploy with advanced features: %v", err),
+			}, nil
+		}
+	} else {
+		// Basic deployment
+		if err := deployer.CreateTaskDefinition(ecsConfig); err != nil {
+			return &ToolResult{
+				Type:      "tool_result",
+				ToolUseID: toolUse.ID,
+				Content:   fmt.Sprintf("Failed to create task definition: %v", err),
+			}, nil
+		}
 	}
 
-	// Create ECS service
+	// Create ECS service (for both advanced and basic deployments)
 	if err := deployer.CreateService(ecsConfig); err != nil {
 		return &ToolResult{
 			Type:      "tool_result",
@@ -265,6 +296,72 @@ func (a *ClaudeAgent) executeStatusTool(toolUse ToolUse) (*ToolResult, error) {
 		Type:      "tool_result",
 		ToolUseID: toolUse.ID,
 		Content:   status,
+	}, nil
+}
+
+func (a *ClaudeAgent) executeCleanupTool(toolUse ToolUse) (*ToolResult, error) {
+	log.Println("Executing cleanup_resources tool")
+
+	// Check confirmation
+	confirm, ok := toolUse.Input["confirm"].(bool)
+	if !ok || !confirm {
+		return &ToolResult{
+			Type:      "tool_result",
+			ToolUseID: toolUse.ID,
+			Content:   "Cleanup cancelled. The 'confirm' parameter must be set to true to proceed with resource deletion.",
+		}, nil
+	}
+
+	// Initialize ECS deployer
+	deployer, err := deploy.NewECSDeployer()
+	if err != nil {
+		return &ToolResult{
+			Type:      "tool_result",
+			ToolUseID: toolUse.ID,
+			Content:   fmt.Sprintf("Failed to initialize ECS deployer: %v", err),
+		}, nil
+	}
+
+	// Get service name from input or use default
+	serviceName := a.config.AWS.ECS.ServiceName
+	if name, ok := toolUse.Input["service_name"].(string); ok && name != "" {
+		serviceName = name
+	}
+
+	// Create ECS configuration
+	ecsConfig := deploy.ECSConfig{
+		ClusterName:        a.config.AWS.ECS.ClusterName,
+		ServiceName:        serviceName,
+		TaskDefinitionName: a.config.AWS.ECS.TaskDefinitionName,
+		VpcId:              a.config.AWS.ECS.VpcId,
+		SubnetIds:          a.config.AWS.ECS.SubnetIds,
+		SecurityGroupIds:   a.config.AWS.ECS.SecurityGroupIds,
+		LoadBalancerName:   a.config.AWS.ECS.LoadBalancerName,
+		WebAppImage:        a.config.Images.AppImage,
+		DatabaseImage:      a.config.Images.Neo4jImage,
+		WebAppPort:         a.config.AWS.ECS.WebAppPort,
+		DatabasePort:       a.config.AWS.ECS.DatabasePort,
+		WebAppMemory:       a.config.AWS.ECS.WebAppMemory,
+		WebAppCPU:          a.config.AWS.ECS.WebAppCPU,
+		DatabaseMemory:     a.config.AWS.ECS.DatabaseMemory,
+		DatabaseCPU:        a.config.AWS.ECS.DatabaseCPU,
+		Environment:        a.config.AWS.ECS.Environment,
+	}
+
+	// Execute cleanup
+	err = deployer.Cleanup(ecsConfig)
+	if err != nil {
+		return &ToolResult{
+			Type:      "tool_result",
+			ToolUseID: toolUse.ID,
+			Content:   fmt.Sprintf("Cleanup failed: %v", err),
+		}, nil
+	}
+
+	return &ToolResult{
+		Type:      "tool_result",
+		ToolUseID: toolUse.ID,
+		Content:   fmt.Sprintf("✅ Successfully cleaned up all AWS ECS resources for service '%s'! This included:\n- ECS Service and Tasks\n- Task Definitions\n- Load Balancer and Target Groups\n- CloudWatch Log Groups\n- ECS Cluster (if empty)", serviceName),
 	}, nil
 }
 

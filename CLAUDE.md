@@ -29,6 +29,9 @@ go mod download
 
 # Deploy directly (non-interactive)
 ./build/opsagents deploy
+
+# Clean up all AWS resources
+./build/opsagents cleanup
 ```
 
 ## Architecture Overview
@@ -59,9 +62,10 @@ OpsAgents is a Claude AI-powered DevOps automation tool that integrates AWS Bedr
 
 ### Tool Integration
 
-The Claude AI agent has access to two primary tools:
-- `deploy_application`: Deploys pre-built containers to AWS Lightsail
+The Claude AI agent has access to three primary tools:
+- `deploy_application`: Deploys pre-built containers to AWS ECS
 - `get_deployment_status`: Retrieves current deployment status
+- `cleanup_resources`: Removes all AWS ECS resources including services, clusters, load balancers, and log groups
 
 ### Environment Variables
 
@@ -128,4 +132,147 @@ For linting, use standard Go tools:
 ```bash
 go vet ./...
 gofmt -l .
+```
+
+## Advanced Configuration Features
+
+OpsAgents supports advanced AWS configuration including secrets management, persistent storage, and enhanced security features as specified in `docs/reqs/configs.md`.
+
+### Secrets Management (AWS Secrets Manager)
+
+When `create_secrets: true` is enabled, OpsAgents automatically creates and manages the following secrets:
+
+1. **Database Password** - Auto-generated 32-character password for Neo4j
+2. **JWT Secret** - Auto-generated 64-character secret for authentication  
+3. **Session Key** - Auto-generated 32-character key for session management
+4. **Anthropic API Key** - From `ANTHROPIC_API_KEY` environment variable
+5. **Gmail Credentials** - From `GMAIL_USER` and `GMAIL_PASS` environment variables
+
+**Environment Variable Mapping:**
+- **Web Application Container:**
+  - `DB_ADMIN` ← Database password secret
+  - `JWT_SECRET` ← JWT secret  
+  - `SESSION_KEY` ← Session key
+  - `ANTHROPIC_API_KEY` ← Anthropic API key
+  - `GMAIL_USER` ← Gmail user credential
+  - `GMAIL_PASS` ← Gmail password credential
+  - `MODE` ← Application mode (prod/dev/test)
+
+- **Database Container:**  
+  - `NEO4J_PASSWORD` ← Database password secret
+
+### Persistent Storage (AWS EFS)
+
+When `create_efs: true` is enabled, OpsAgents creates an EFS file system with:
+
+- **Provisioned throughput** (10 MiB/s)
+- **Transit encryption** enabled
+- **Mount targets** in all available subnets
+- **Automatic mounting** to `/data` directory in Neo4j container
+
+**Database Configuration:**
+- Container exposes ports **7474** (HTTP) and **7687** (Bolt)
+- EFS volume mounted to `/data` for persistent Neo4j storage
+- Secure password-based authentication via secrets
+
+### Configuration Options
+
+Update your `config.yaml` to enable advanced features:
+
+```yaml
+aws:
+  ecs:
+    create_secrets: true      # Enable AWS Secrets Manager
+    create_efs: true         # Enable EFS persistent storage  
+    mode: "prod"             # Application mode
+    environment:
+      ENV: production
+      PORT: "8000"
+```
+
+**Required Environment Variables** (for secrets creation):
+```bash
+export ANTHROPIC_API_KEY="your-anthropic-key"
+export GMAIL_USER="your-gmail-user"  
+export GMAIL_PASS="your-gmail-app-password"
+```
+
+## Cleanup and Resource Management
+
+OpsAgents provides comprehensive cleanup functionality to remove all AWS ECS resources when they're no longer needed.
+
+### Cleanup Methods
+
+**1. CLI Command:**
+```bash
+./build/opsagents cleanup
+```
+- Interactive confirmation required
+- Lists all resources that will be deleted
+- Safely handles resource dependencies
+
+**2. Claude AI Agent:**
+Ask the agent to clean up resources:
+- "cleanup resources" 
+- "remove all AWS resources"
+- "delete the deployment"
+
+**3. Programmatic Cleanup:**
+```go
+deployer, _ := deploy.NewECSDeployer()
+err := deployer.Cleanup(ecsConfig)
+```
+
+### Resources Cleaned Up
+
+The cleanup process removes the following AWS resources in the correct order:
+
+1. **ECS Service** - Scales down to 0 and deletes the service
+2. **Task Definitions** - Deregisters all revisions of the task definition
+3. **Load Balancer Resources:**
+   - Application Load Balancer listeners
+   - Application Load Balancer  
+   - Target Groups (after load balancer is deleted)
+4. **CloudWatch Log Groups** - Removes webapp and database log groups
+5. **AWS Secrets Manager Secrets** (if `create_secrets: true`):
+   - Database password secret
+   - JWT secret
+   - Session key secret
+   - Anthropic API key secret  
+   - Gmail user/password secrets
+6. **EFS File System** (if `create_efs: true`):
+   - EFS mount targets (all subnets)
+   - EFS file system with all data
+7. **ECS Cluster** - Deletes cluster only if empty (no other services/tasks)
+
+### Safety Features
+
+- **Confirmation Required**: CLI prompts for user confirmation
+- **Agent Confirmation**: Claude agent requires explicit `confirm: true` parameter
+- **Dependency Handling**: Resources are deleted in the correct order
+- **Error Handling**: Continues cleanup even if some resources fail to delete
+- **Cluster Protection**: Only deletes ECS cluster if it has no other resources
+
+### Example Usage
+
+**CLI:**
+```bash
+$ ./build/opsagents cleanup
+This will delete the following resources:
+  - ECS Service: bigfootgolf-service
+  - ECS Cluster: bigfootgolf-cluster (if empty)
+  - Task Definition: bigfootgolf-task (all revisions)
+  - Load Balancer: bigfootgolf-service-alb
+  - Target Group: bigfootgolf-service-tg
+  - CloudWatch Log Groups
+
+Are you sure you want to proceed? (yes/no): yes
+✅ Cleanup completed successfully!
+```
+
+**Claude Agent:**
+```
+You: cleanup all AWS resources
+Claude: I'll clean up all the AWS ECS resources for you. This will remove the service, load balancers, and associated infrastructure.
+✅ Successfully cleaned up all AWS ECS resources for service 'bigfootgolf-service'!
 ```

@@ -3,11 +3,24 @@ auth:
     aws_profile_env: AWS_PROFILE
     github_token_env: GITHUB_TOKEN
 aws:
+    ecs:
+        cluster_name: bigfootgolf-cluster
+        service_name: bigfootgolf-service
+        task_definition_name: bigfootgolf-task
+        webapp_port: 8000
+        database_port: 7687
+        webapp_memory: 512
+        webapp_cpu: 256
+        database_memory: 512
+        database_cpu: 256
+        environment:
+            ENV: production
+            PORT: "8000"
     lightsail:
         container_name: bigfootgolf-app
         environment:
             env: production
-            port: "8080"
+            port: "8000"
         power: nano
         public_domain: bigfootgolf.example.com
         scale: 1
@@ -19,8 +32,8 @@ claude:
     region: us-east-1
     temperature: 0.1
 images:
-    app_image: your-registry/bigfootgolf-app:latest
-    neo4j_image: neo4j:5-community
-    registry: docker.io
+    app_image: ghcr.io/jrzesz33/bigfootgolf-webapp:sha-788e856
+    neo4j_image: ghcr.io/jrzesz33/bigfootgolf-db:sha-788e856
+    registry: ghcr.io/jrzesz33
 log_level: info
 port: 8080

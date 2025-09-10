@@ -11,9 +11,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs v1.57.3
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.251.1
 	github.com/aws/aws-sdk-go-v2/service/ecs v1.63.6
+	github.com/aws/aws-sdk-go-v2/service/efs v1.40.5
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.50.3
 	github.com/aws/aws-sdk-go-v2/service/iam v1.47.4
 	github.com/aws/aws-sdk-go-v2/service/lightsail v1.48.2
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.39.4
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.20.1
 )

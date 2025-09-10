@@ -58,9 +58,23 @@ func main() {
 		},
 	}
 
+	var cleanupCmd = &cobra.Command{
+		Use:   "cleanup",
+		Short: "Clean up AWS ECS resources",
+		Long:  `Remove all AWS ECS resources including services, clusters, load balancers, and log groups`,
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println("Starting cleanup of AWS ECS resources...")
+			if err := runCleanup(); err != nil {
+				fmt.Printf("Cleanup failed: %v\n", err)
+				os.Exit(1)
+			}
+		},
+	}
+
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(cleanupCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -82,8 +96,9 @@ func runAgent() error {
 	fmt.Println("🤖 Claude OpsAgent - Your AI DevOps Assistant")
 	fmt.Println("Type 'exit' or 'quit' to stop the agent")
 	fmt.Println("Available commands:")
-	fmt.Println("  - 'deploy to production' - Deploy pre-built containers to AWS Lightsail")
+	fmt.Println("  - 'deploy to production' - Deploy pre-built containers to AWS ECS")
 	fmt.Println("  - 'check deployment status' - Get current deployment status")
+	fmt.Println("  - 'cleanup resources' - Remove all AWS ECS resources")
 	fmt.Println()
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -156,12 +171,19 @@ func runDeploy() error {
 		fmt.Printf("ECS cluster might already exist: %v\n", err)
 	}
 
-	// Create task definition
-	if err := deployer.CreateTaskDefinition(ecsConfig); err != nil {
-		return fmt.Errorf("failed to create task definition: %w", err)
+	// Use advanced deployment if advanced features are enabled
+	if ecsConfig.CreateSecrets || ecsConfig.CreateEFS {
+		if err := deployer.DeployAdvanced(ecsConfig); err != nil {
+			return fmt.Errorf("failed to deploy with advanced features: %w", err)
+		}
+	} else {
+		// Basic deployment
+		if err := deployer.CreateTaskDefinition(ecsConfig); err != nil {
+			return fmt.Errorf("failed to create task definition: %w", err)
+		}
 	}
 
-	// Create ECS service
+	// Create ECS service (for both advanced and basic deployments)
 	if err := deployer.CreateService(ecsConfig); err != nil {
 		return fmt.Errorf("failed to create ECS service: %w", err)
 	}
@@ -172,5 +194,64 @@ func runDeploy() error {
 	}
 
 	fmt.Println("Deployment completed successfully!")
+	return nil
+}
+
+func runCleanup() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Initialize ECS deployer
+	deployer, err := deploy.NewECSDeployer()
+	if err != nil {
+		return fmt.Errorf("failed to initialize ECS deployer: %w", err)
+	}
+
+	// Create ECS configuration
+	ecsConfig := deploy.ECSConfig{
+		ClusterName:        cfg.AWS.ECS.ClusterName,
+		ServiceName:        cfg.AWS.ECS.ServiceName,
+		TaskDefinitionName: cfg.AWS.ECS.TaskDefinitionName,
+		VpcId:              cfg.AWS.ECS.VpcId,
+		SubnetIds:          cfg.AWS.ECS.SubnetIds,
+		SecurityGroupIds:   cfg.AWS.ECS.SecurityGroupIds,
+		LoadBalancerName:   cfg.AWS.ECS.LoadBalancerName,
+		WebAppImage:        cfg.Images.AppImage,
+		DatabaseImage:      cfg.Images.Neo4jImage,
+		WebAppPort:         cfg.AWS.ECS.WebAppPort,
+		DatabasePort:       cfg.AWS.ECS.DatabasePort,
+		WebAppMemory:       cfg.AWS.ECS.WebAppMemory,
+		WebAppCPU:          cfg.AWS.ECS.WebAppCPU,
+		DatabaseMemory:     cfg.AWS.ECS.DatabaseMemory,
+		DatabaseCPU:        cfg.AWS.ECS.DatabaseCPU,
+		Environment:        cfg.AWS.ECS.Environment,
+	}
+
+	// Confirm cleanup with user
+	fmt.Printf("This will delete the following resources:\n")
+	fmt.Printf("  - ECS Service: %s\n", ecsConfig.ServiceName)
+	fmt.Printf("  - ECS Cluster: %s (if empty)\n", ecsConfig.ClusterName)
+	fmt.Printf("  - Task Definition: %s (all revisions)\n", ecsConfig.TaskDefinitionName)
+	fmt.Printf("  - Load Balancer: %s-alb\n", ecsConfig.ServiceName)
+	fmt.Printf("  - Target Group: %s-tg\n", ecsConfig.ServiceName)
+	fmt.Printf("  - CloudWatch Log Groups\n")
+	fmt.Print("\nAre you sure you want to proceed? (yes/no): ")
+
+	var response string
+	fmt.Scanln(&response)
+	
+	if strings.ToLower(response) != "yes" && strings.ToLower(response) != "y" {
+		fmt.Println("Cleanup cancelled.")
+		return nil
+	}
+
+	// Run cleanup
+	if err := deployer.Cleanup(ecsConfig); err != nil {
+		return fmt.Errorf("cleanup failed: %w", err)
+	}
+
+	fmt.Println("✅ Cleanup completed successfully!")
 	return nil
 }

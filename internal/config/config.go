@@ -25,8 +25,8 @@ type Config struct {
 	} `mapstructure:"images"`
 
 	AWS struct {
-		Region    string `mapstructure:"region"`
-		ECS struct {
+		Region string `mapstructure:"region"`
+		ECS    struct {
 			ClusterName        string            `mapstructure:"cluster_name"`
 			ServiceName        string            `mapstructure:"service_name"`
 			TaskDefinitionName string            `mapstructure:"task_definition_name"`
@@ -41,6 +41,10 @@ type Config struct {
 			DatabaseMemory     int32             `mapstructure:"database_memory"`
 			DatabaseCPU        int32             `mapstructure:"database_cpu"`
 			Environment        map[string]string `mapstructure:"environment"`
+			CreateSecrets      bool              `mapstructure:"create_secrets"`
+			CreateEFS          bool              `mapstructure:"create_efs"`
+			EFSVolumeId        string            `mapstructure:"efs_volume_id"`
+			Mode               string            `mapstructure:"mode"`
 		} `mapstructure:"ecs"`
 		Lightsail struct {
 			ServiceName   string            `mapstructure:"service_name"`
@@ -76,20 +80,23 @@ func Load() (*Config, error) {
 	viper.SetDefault("port", 8080)
 	viper.SetDefault("log_level", "info")
 	viper.SetDefault("images.registry", "ghcr.io/jrzesz33")
-	viper.SetDefault("images.app_image", "ghcr.io/jrzesz33/bigfootgolf-webapp:sha-c87dd02")
-	viper.SetDefault("images.neo4j_image", "ghcr.io/jrzesz33/bigfootgolf-db:sha-c87dd02")
+	viper.SetDefault("images.app_image", "ghcr.io/jrzesz33/bigfootgolf-webapp:sha-788e856")
+	viper.SetDefault("images.neo4j_image", "ghcr.io/jrzesz33/bigfootgolf-db:sha-788e856")
 	viper.SetDefault("aws.region", "us-east-1")
 	// ECS defaults
 	viper.SetDefault("aws.ecs.cluster_name", "bigfootgolf-cluster")
 	viper.SetDefault("aws.ecs.service_name", "bigfootgolf-service")
 	viper.SetDefault("aws.ecs.task_definition_name", "bigfootgolf-task")
-	viper.SetDefault("aws.ecs.webapp_port", 8080)
+	viper.SetDefault("aws.ecs.webapp_port", 8000)
 	viper.SetDefault("aws.ecs.database_port", 7687)
 	viper.SetDefault("aws.ecs.webapp_memory", 512)
 	viper.SetDefault("aws.ecs.webapp_cpu", 256)
 	viper.SetDefault("aws.ecs.database_memory", 512)
 	viper.SetDefault("aws.ecs.database_cpu", 256)
 	viper.SetDefault("aws.ecs.load_balancer_name", "bigfootgolf-alb")
+	viper.SetDefault("aws.ecs.create_secrets", false)
+	viper.SetDefault("aws.ecs.create_efs", false)
+	viper.SetDefault("aws.ecs.mode", "prod")
 	// Lightsail defaults (kept for compatibility)
 	viper.SetDefault("aws.lightsail.service_name", "bigfootgolf-service")
 	viper.SetDefault("aws.lightsail.power", "nano")
@@ -139,15 +146,19 @@ aws:
     subnet_ids: []  # Will be auto-detected or set via environment
     security_group_ids: []  # Will be auto-detected or set via environment
     load_balancer_name: bigfootgolf-alb
-    webapp_port: 8080
+    webapp_port: 8000
     database_port: 7687
     webapp_memory: 512
     webapp_cpu: 256
     database_memory: 512
     database_cpu: 256
+    create_secrets: false      # Enable to create AWS Secrets Manager secrets
+    create_efs: false         # Enable to create EFS volume for Neo4j persistence
+    efs_volume_id: ""         # EFS Volume ID (auto-created if create_efs is true)
+    mode: "prod"              # Application mode: prod, dev, test
     environment:
       ENV: production
-      PORT: "8080"
+      PORT: "8000"
   lightsail:
     service_name: bigfootgolf-service
     power: nano
@@ -156,7 +167,7 @@ aws:
     container_name: bigfootgolf-app
     environment:
       ENV: production
-      PORT: "8080"
+      PORT: "8000"
 
 claude:
   region: us-east-1
