@@ -157,7 +157,7 @@ func (d *ECSDeployer) CreateTaskDefinition(config ECSConfig) error {
 					Protocol:      types.TransportProtocolTcp,
 				},
 			},
-			Environment: d.mapToEnvironment(config.Environment),
+			Environment: d.buildWebAppEnvironment(config.Environment, config.Mode),
 			LogConfiguration: &types.LogConfiguration{
 				LogDriver: types.LogDriverAwslogs,
 				Options: map[string]string{
@@ -234,14 +234,8 @@ func (d *ECSDeployer) CreateTaskDefinitionAdvanced(config ECSConfig, secretArns 
 	taskExecutionRoleArn := "arn:aws:iam::" + d.getAccountId() + ":role/ecsTaskExecutionRole"
 
 	// Build web app environment variables and secrets
-	webAppEnv := d.mapToEnvironment(config.Environment)
+	webAppEnv := d.buildWebAppEnvironment(config.Environment, config.Mode)
 	webAppSecrets := []types.Secret{}
-
-	// Add MODE environment variable
-	webAppEnv = append(webAppEnv, types.KeyValuePair{
-		Name:  aws.String("MODE"),
-		Value: aws.String(config.Mode),
-	})
 
 	// Map secrets to environment variables for web app
 	if arn, exists := secretArns["DB_SECRET_ARN"]; exists {
@@ -632,6 +626,25 @@ func (d *ECSDeployer) mapToEnvironment(envMap map[string]string) []types.KeyValu
 			Value: aws.String(value),
 		})
 	}
+	return env
+}
+
+func (d *ECSDeployer) buildWebAppEnvironment(envMap map[string]string, mode string) []types.KeyValuePair {
+	// Start with the provided environment variables
+	env := d.mapToEnvironment(envMap)
+	
+	// Add MODE environment variable
+	env = append(env, types.KeyValuePair{
+		Name:  aws.String("MODE"),
+		Value: aws.String(mode),
+	})
+
+	// Add DB_URI environment variable with default value
+	env = append(env, types.KeyValuePair{
+		Name:  aws.String("DB_URI"),
+		Value: aws.String("bolt://localhost:7687"),
+	})
+
 	return env
 }
 

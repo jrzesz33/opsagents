@@ -5,7 +5,7 @@ auth:
 aws:
     ecs:
         cluster_name: bigfootgolf-cluster
-        create_efs: true
+        create_efs: false
         create_secrets: true
         database_cpu: 256
         database_http_port: 7474
@@ -18,9 +18,9 @@ aws:
         load_balancer_name: bigfootgolf-alb
         mode: prod
         security_group_ids: []
-        service_name: bigfootgolf-service
+        service_name: bigfootgolf-service-v3
         subnet_ids: []
-        task_definition_name: bigfootgolf-task
+        task_definition_name: bigfootgolf-task-v3
         vpc_id: ""
         webapp_cpu: 256
         webapp_memory: 512

@@ -11,6 +11,7 @@ The below Secrets need to be mapped to from this applications environment variab
 
 ## Configuration Management
     1. A configuration (environment) variable needs to be created for MODE and is defaulted to "prod"
+    2. A configuration (environment) variable needs to be created for DB_URI and is defaulted to "bolt://localhost:7687"
 
 ## Database Configuration
     1. The Database secret should be mapped to the NEO4J_PASSWORD environment Variable for the database Container
@@ -24,3 +25,4 @@ The below Secrets need to be mapped to from this applications environment variab
     4. The Session Key should be mapped to the SESSION_KEY variable
     5. The GMAIL app key should be mapped to the GMAIL_USER variable
     6. The GMAIL App Secret should be mapped to the GMAIL_PASS variable
+    7. The DB_URI env variable should be available to this application

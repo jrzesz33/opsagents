@@ -81,8 +81,8 @@ func Load() (*Config, error) {
 	viper.SetDefault("port", 8080)
 	viper.SetDefault("log_level", "info")
 	viper.SetDefault("images.registry", "ghcr.io/jrzesz33")
-	viper.SetDefault("images.app_image", "ghcr.io/jrzesz33/bigfootgolf-webapp:sha-788e856")
-	viper.SetDefault("images.neo4j_image", "ghcr.io/jrzesz33/bigfootgolf-db:sha-9270da4")
+	viper.SetDefault("images.app_image", "ghcr.io/jrzesz33/bigfootgolf-webapp:sha-1756ddd")
+	viper.SetDefault("images.neo4j_image", "ghcr.io/jrzesz33/bigfootgolf-db:sha-1756ddd")
 	viper.SetDefault("aws.region", "us-east-1")
 	// ECS defaults
 	viper.SetDefault("aws.ecs.cluster_name", "bigfootgolf-cluster")
