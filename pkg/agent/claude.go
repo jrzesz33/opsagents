@@ -196,11 +196,16 @@ func (a *ClaudeAgent) executeDeployTool(toolUse ToolUse) (*ToolResult, error) {
 		DatabaseImage:      a.config.Images.Neo4jImage,
 		WebAppPort:         a.config.AWS.ECS.WebAppPort,
 		DatabasePort:       a.config.AWS.ECS.DatabasePort,
+		DatabaseHTTPPort:   a.config.AWS.ECS.DatabaseHTTPPort,
 		WebAppMemory:       a.config.AWS.ECS.WebAppMemory,
 		WebAppCPU:          a.config.AWS.ECS.WebAppCPU,
 		DatabaseMemory:     a.config.AWS.ECS.DatabaseMemory,
 		DatabaseCPU:        a.config.AWS.ECS.DatabaseCPU,
 		Environment:        a.config.AWS.ECS.Environment,
+		CreateSecrets:      a.config.AWS.ECS.CreateSecrets,
+		CreateEFS:          a.config.AWS.ECS.CreateEFS,
+		EFSVolumeId:        a.config.AWS.ECS.EFSVolumeId,
+		Mode:               a.config.AWS.ECS.Mode,
 	}
 
 	// Create ECS cluster
@@ -341,11 +346,16 @@ func (a *ClaudeAgent) executeCleanupTool(toolUse ToolUse) (*ToolResult, error) {
 		DatabaseImage:      a.config.Images.Neo4jImage,
 		WebAppPort:         a.config.AWS.ECS.WebAppPort,
 		DatabasePort:       a.config.AWS.ECS.DatabasePort,
+		DatabaseHTTPPort:   a.config.AWS.ECS.DatabaseHTTPPort,
 		WebAppMemory:       a.config.AWS.ECS.WebAppMemory,
 		WebAppCPU:          a.config.AWS.ECS.WebAppCPU,
 		DatabaseMemory:     a.config.AWS.ECS.DatabaseMemory,
 		DatabaseCPU:        a.config.AWS.ECS.DatabaseCPU,
 		Environment:        a.config.AWS.ECS.Environment,
+		CreateSecrets:      a.config.AWS.ECS.CreateSecrets,
+		CreateEFS:          a.config.AWS.ECS.CreateEFS,
+		EFSVolumeId:        a.config.AWS.ECS.EFSVolumeId,
+		Mode:               a.config.AWS.ECS.Mode,
 	}
 
 	// Execute cleanup

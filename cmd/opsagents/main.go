@@ -159,11 +159,16 @@ func runDeploy() error {
 		DatabaseImage:      cfg.Images.Neo4jImage,
 		WebAppPort:         cfg.AWS.ECS.WebAppPort,
 		DatabasePort:       cfg.AWS.ECS.DatabasePort,
+		DatabaseHTTPPort:   cfg.AWS.ECS.DatabaseHTTPPort,
 		WebAppMemory:       cfg.AWS.ECS.WebAppMemory,
 		WebAppCPU:          cfg.AWS.ECS.WebAppCPU,
 		DatabaseMemory:     cfg.AWS.ECS.DatabaseMemory,
 		DatabaseCPU:        cfg.AWS.ECS.DatabaseCPU,
 		Environment:        cfg.AWS.ECS.Environment,
+		CreateSecrets:      cfg.AWS.ECS.CreateSecrets,
+		CreateEFS:          cfg.AWS.ECS.CreateEFS,
+		EFSVolumeId:        cfg.AWS.ECS.EFSVolumeId,
+		Mode:               cfg.AWS.ECS.Mode,
 	}
 
 	// Create ECS cluster
@@ -222,11 +227,16 @@ func runCleanup() error {
 		DatabaseImage:      cfg.Images.Neo4jImage,
 		WebAppPort:         cfg.AWS.ECS.WebAppPort,
 		DatabasePort:       cfg.AWS.ECS.DatabasePort,
+		DatabaseHTTPPort:   cfg.AWS.ECS.DatabaseHTTPPort,
 		WebAppMemory:       cfg.AWS.ECS.WebAppMemory,
 		WebAppCPU:          cfg.AWS.ECS.WebAppCPU,
 		DatabaseMemory:     cfg.AWS.ECS.DatabaseMemory,
 		DatabaseCPU:        cfg.AWS.ECS.DatabaseCPU,
 		Environment:        cfg.AWS.ECS.Environment,
+		CreateSecrets:      cfg.AWS.ECS.CreateSecrets,
+		CreateEFS:          cfg.AWS.ECS.CreateEFS,
+		EFSVolumeId:        cfg.AWS.ECS.EFSVolumeId,
+		Mode:               cfg.AWS.ECS.Mode,
 	}
 
 	// Confirm cleanup with user

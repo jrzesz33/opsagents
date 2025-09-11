@@ -35,7 +35,8 @@ type Config struct {
 			SecurityGroupIds   []string          `mapstructure:"security_group_ids"`
 			LoadBalancerName   string            `mapstructure:"load_balancer_name"`
 			WebAppPort         int32             `mapstructure:"webapp_port"`
-			DatabasePort       int32             `mapstructure:"database_port"`
+			DatabasePort       int32             `mapstructure:"database_port"`      // Neo4j Bolt port (7687)
+			DatabaseHTTPPort   int32             `mapstructure:"database_http_port"` // Neo4j HTTP port (7474)
 			WebAppMemory       int32             `mapstructure:"webapp_memory"`
 			WebAppCPU          int32             `mapstructure:"webapp_cpu"`
 			DatabaseMemory     int32             `mapstructure:"database_memory"`
@@ -81,7 +82,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("log_level", "info")
 	viper.SetDefault("images.registry", "ghcr.io/jrzesz33")
 	viper.SetDefault("images.app_image", "ghcr.io/jrzesz33/bigfootgolf-webapp:sha-788e856")
-	viper.SetDefault("images.neo4j_image", "ghcr.io/jrzesz33/bigfootgolf-db:sha-788e856")
+	viper.SetDefault("images.neo4j_image", "ghcr.io/jrzesz33/bigfootgolf-db:sha-9270da4")
 	viper.SetDefault("aws.region", "us-east-1")
 	// ECS defaults
 	viper.SetDefault("aws.ecs.cluster_name", "bigfootgolf-cluster")
@@ -89,6 +90,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("aws.ecs.task_definition_name", "bigfootgolf-task")
 	viper.SetDefault("aws.ecs.webapp_port", 8000)
 	viper.SetDefault("aws.ecs.database_port", 7687)
+	viper.SetDefault("aws.ecs.database_http_port", 7474)
 	viper.SetDefault("aws.ecs.webapp_memory", 512)
 	viper.SetDefault("aws.ecs.webapp_cpu", 256)
 	viper.SetDefault("aws.ecs.database_memory", 512)
@@ -147,7 +149,8 @@ aws:
     security_group_ids: []  # Will be auto-detected or set via environment
     load_balancer_name: bigfootgolf-alb
     webapp_port: 8000
-    database_port: 7687
+    database_port: 7687          # Neo4j Bolt protocol port
+    database_http_port: 7474     # Neo4j HTTP interface port
     webapp_memory: 512
     webapp_cpu: 256
     database_memory: 512

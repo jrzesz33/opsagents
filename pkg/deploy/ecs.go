@@ -47,7 +47,8 @@ type ECSConfig struct {
 	WebAppImage        string
 	DatabaseImage      string
 	WebAppPort         int32
-	DatabasePort       int32
+	DatabasePort       int32 // Neo4j Bolt port (7687)
+	DatabaseHTTPPort   int32 // Neo4j HTTP port (7474)
 	WebAppMemory       int32
 	WebAppCPU          int32
 	DatabaseMemory     int32
@@ -174,7 +175,11 @@ func (d *ECSDeployer) CreateTaskDefinition(config ECSConfig) error {
 			Cpu:    config.DatabaseCPU,
 			PortMappings: []types.PortMapping{
 				{
-					ContainerPort: aws.Int32(config.DatabasePort),
+					ContainerPort: aws.Int32(7474), // Neo4j HTTP interface
+					Protocol:      types.TransportProtocolTcp,
+				},
+				{
+					ContainerPort: aws.Int32(7687), // Neo4j Bolt protocol
 					Protocol:      types.TransportProtocolTcp,
 				},
 			},
@@ -437,9 +442,33 @@ func (d *ECSDeployer) DeployAdvanced(config ECSConfig) error {
 func (d *ECSDeployer) CreateService(config ECSConfig) error {
 	fmt.Printf("Creating ECS service: %s\n", config.ServiceName)
 
+	// Check if service already exists
+	describeInput := &ecs.DescribeServicesInput{
+		Cluster:  aws.String(config.ClusterName),
+		Services: []string{config.ServiceName},
+	}
+
+	describeOutput, err := d.ecsClient.DescribeServices(d.ctx, describeInput)
+	if err == nil && len(describeOutput.Services) > 0 {
+		service := describeOutput.Services[0]
+		if *service.Status == "ACTIVE" {
+			fmt.Printf("ECS service %s already exists and is active, updating task definition\n", config.ServiceName)
+			// Update the service with the new task definition
+			_, updateErr := d.ecsClient.UpdateService(d.ctx, &ecs.UpdateServiceInput{
+				Cluster:        aws.String(config.ClusterName),
+				Service:        aws.String(config.ServiceName),
+				TaskDefinition: aws.String(config.TaskDefinitionName),
+			})
+			if updateErr != nil {
+				return fmt.Errorf("failed to update ECS service: %w", updateErr)
+			}
+			fmt.Printf("ECS service %s updated successfully\n", config.ServiceName)
+			return nil
+		}
+	}
+
 	// Auto-discover VPC and subnets if not provided
 	if config.VpcId == "" || len(config.SubnetIds) == 0 {
-		var err error
 		config, err = d.autoDiscoverNetworking(config)
 		if err != nil {
 			return fmt.Errorf("failed to auto-discover networking: %w", err)
@@ -540,10 +569,27 @@ func (d *ECSDeployer) WaitForServiceStable(clusterName, serviceName string) erro
 }
 
 func (d *ECSDeployer) createTargetGroup(config ECSConfig) (string, error) {
+	targetGroupName := fmt.Sprintf("%s-tg", config.ServiceName)
 	fmt.Printf("Creating target group for service: %s\n", config.ServiceName)
 
+	// First, check if a target group with this name already exists
+	describeInput := &elasticloadbalancingv2.DescribeTargetGroupsInput{
+		Names: []string{targetGroupName},
+	}
+
+	describeOutput, err := d.elbv2Client.DescribeTargetGroups(d.ctx, describeInput)
+	if err == nil && len(describeOutput.TargetGroups) > 0 {
+		// Target group exists, reuse it regardless of settings
+		// This avoids the complexity of deleting and recreating
+		existingTG := describeOutput.TargetGroups[0]
+		fmt.Printf("Target group %s already exists, reusing it (port: %d, protocol: %s)\n", 
+			targetGroupName, *existingTG.Port, existingTG.Protocol)
+		return *existingTG.TargetGroupArn, nil
+	}
+
+	// Create new target group
 	input := &elasticloadbalancingv2.CreateTargetGroupInput{
-		Name:                       aws.String(fmt.Sprintf("%s-tg", config.ServiceName)),
+		Name:                       aws.String(targetGroupName),
 		Protocol:                   elbv2types.ProtocolEnumHttp,
 		Port:                       aws.Int32(config.WebAppPort),
 		VpcId:                      aws.String(config.VpcId),
@@ -560,6 +606,7 @@ func (d *ECSDeployer) createTargetGroup(config ECSConfig) (string, error) {
 		return "", fmt.Errorf("failed to create target group: %w", err)
 	}
 
+	fmt.Printf("Created target group: %s\n", targetGroupName)
 	return *output.TargetGroups[0].TargetGroupArn, nil
 }
 
@@ -670,10 +717,27 @@ func (d *ECSDeployer) autoDiscoverNetworking(config ECSConfig) (ECSConfig, error
 }
 
 func (d *ECSDeployer) createLoadBalancer(config ECSConfig) (string, error) {
+	loadBalancerName := fmt.Sprintf("%s-alb", config.ServiceName)
 	fmt.Printf("Creating load balancer for service: %s\n", config.ServiceName)
 
+	// First, check if a load balancer with this name already exists
+	describeInput := &elasticloadbalancingv2.DescribeLoadBalancersInput{
+		Names: []string{loadBalancerName},
+	}
+
+	describeOutput, err := d.elbv2Client.DescribeLoadBalancers(d.ctx, describeInput)
+	if err == nil && len(describeOutput.LoadBalancers) > 0 {
+		// Load balancer exists, check if it's available and reuse it
+		existingLB := describeOutput.LoadBalancers[0]
+		if existingLB.State.Code == elbv2types.LoadBalancerStateEnumActive {
+			fmt.Printf("Load balancer %s already exists and is active, reusing it\n", loadBalancerName)
+			return *existingLB.LoadBalancerArn, nil
+		}
+	}
+
+	// Create new load balancer
 	input := &elasticloadbalancingv2.CreateLoadBalancerInput{
-		Name:           aws.String(fmt.Sprintf("%s-alb", config.ServiceName)),
+		Name:           aws.String(loadBalancerName),
 		Subnets:        config.SubnetIds,
 		SecurityGroups: config.SecurityGroupIds,
 		Scheme:         elbv2types.LoadBalancerSchemeEnumInternetFacing,
@@ -695,6 +759,37 @@ func (d *ECSDeployer) createLoadBalancer(config ECSConfig) (string, error) {
 func (d *ECSDeployer) createListener(loadBalancerArn, targetGroupArn string, _ ECSConfig) error {
 	fmt.Printf("Creating listener for load balancer\n")
 
+	// First, check if a listener already exists for this load balancer on port 80
+	describeInput := &elasticloadbalancingv2.DescribeListenersInput{
+		LoadBalancerArn: aws.String(loadBalancerArn),
+	}
+
+	describeOutput, err := d.elbv2Client.DescribeListeners(d.ctx, describeInput)
+	if err == nil && len(describeOutput.Listeners) > 0 {
+		for _, listener := range describeOutput.Listeners {
+			if *listener.Port == 80 && listener.Protocol == elbv2types.ProtocolEnumHttp {
+				fmt.Printf("Listener already exists on port 80, updating target group\n")
+				// Update the existing listener to point to the new target group
+				_, updateErr := d.elbv2Client.ModifyListener(d.ctx, &elasticloadbalancingv2.ModifyListenerInput{
+					ListenerArn: listener.ListenerArn,
+					DefaultActions: []elbv2types.Action{
+						{
+							Type:           elbv2types.ActionTypeEnumForward,
+							TargetGroupArn: aws.String(targetGroupArn),
+						},
+					},
+				})
+				if updateErr != nil {
+					fmt.Printf("Warning: Failed to update existing listener: %v\n", updateErr)
+				} else {
+					fmt.Printf("Listener updated successfully\n")
+					return nil
+				}
+			}
+		}
+	}
+
+	// Create new listener
 	input := &elasticloadbalancingv2.CreateListenerInput{
 		LoadBalancerArn: aws.String(loadBalancerArn),
 		Protocol:        elbv2types.ProtocolEnumHttp,
@@ -707,7 +802,7 @@ func (d *ECSDeployer) createListener(loadBalancerArn, targetGroupArn string, _ E
 		},
 	}
 
-	_, err := d.elbv2Client.CreateListener(d.ctx, input)
+	_, err = d.elbv2Client.CreateListener(d.ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to create listener: %w", err)
 	}
@@ -715,6 +810,7 @@ func (d *ECSDeployer) createListener(loadBalancerArn, targetGroupArn string, _ E
 	fmt.Printf("Listener created successfully\n")
 	return nil
 }
+
 
 func (d *ECSDeployer) Cleanup(config ECSConfig) error {
 	fmt.Printf("Starting cleanup of ECS resources for service: %s\n", config.ServiceName)
