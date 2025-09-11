@@ -1,15 +1,23 @@
-# OpsAgents - Claude AI Agent for DevOps Automation
+# OpsAgents - Claude AI-Powered AWS ECS Deployment Tool
 
-An intelligent Claude AI agent that uses AWS Bedrock to automate deployment of pre-built applications to AWS Lightsail. Interact with your DevOps pipeline using natural language commands while the AI agent executes deployment workflows.
+[![Go](https://img.shields.io/badge/Go-1.21+-blue.svg)](https://golang.org)
+[![AWS](https://img.shields.io/badge/AWS-ECS-orange.svg)](https://aws.amazon.com/ecs/)
+[![Claude](https://img.shields.io/badge/Claude-AI-purple.svg)](https://claude.ai)
+
+An intelligent Claude AI agent that uses AWS Bedrock to automate deployment of containerized applications to AWS ECS (Elastic Container Service). Interact with your DevOps pipeline using natural language commands while the AI agent executes deployment workflows.
 
 ## ✨ Features
 
 - **🤖 Claude AI Integration**: Natural language interaction with Claude AI via AWS Bedrock
 - **🛠️ Intelligent Tools**: AI-powered deployment tools that understand context
 - **🐳 External Image Support**: Deploy pre-built Docker images from external registries
-- **☁️ AWS Lightsail Deployment**: Deploy containers to cost-efficient AWS Lightsail services
+- **☁️ AWS ECS Deployment**: Deploy containers to scalable AWS ECS with Fargate
+- **🔒 Security First**: AWS Secrets Manager integration for secure credential management
+- **💾 Persistence**: EFS storage for database persistence
+- **📊 Monitoring**: CloudWatch logging and Application Load Balancer health checks
 - **⚙️ Configuration Management**: Flexible YAML-based configuration with environment variable support
 - **💬 Interactive Chat**: Chat with Claude to deploy and manage your applications
+- **🧽 Easy Cleanup**: One-command resource removal
 
 ## 🚀 Quick Start
 
@@ -51,7 +59,7 @@ Then interact with Claude naturally:
 🤖 Claude OpsAgent - Your AI DevOps Assistant
 
 You: deploy to production
-🤖 Claude: I'll deploy the pre-built application to AWS Lightsail. The containers will be deployed with health checks enabled.
+🤖 Claude: I'll deploy the pre-built application to AWS ECS. The containers will be deployed with health checks and load balancing enabled.
 
 You: check deployment status
 🤖 Claude: Let me check the current deployment status for you...
@@ -64,7 +72,68 @@ You can also use direct commands without the AI agent:
 ```bash
 # Deploy directly  
 ./build/opsagents deploy
+
+# Clean up all resources
+./build/opsagents cleanup
 ```
+
+## 📋 What Gets Deployed
+
+### AWS Infrastructure
+- **ECS Cluster** with Fargate capacity providers
+- **ECS Service** with auto-scaling and health checks  
+- **Application Load Balancer** with target groups
+- **CloudWatch Log Groups** for application monitoring
+- **VPC Integration** with auto-discovery
+- **Security Groups** with least-privilege access
+
+### Container Applications
+- **Web Application** (configurable image, port 8000)
+- **Neo4j Database** (ports 7474/7687, optional persistence)
+
+### Advanced Features (Optional)
+- **AWS Secrets Manager** - 6 auto-generated secrets
+- **EFS Persistent Storage** - Database data persistence  
+- **Multi-AZ Deployment** - High availability across subnets
+
+## 🔧 Configuration Modes
+
+### Basic Deployment
+```yaml
+aws:
+  ecs:
+    create_secrets: false
+    create_efs: false
+```
+**Creates**: ECS service + Load balancer + 2 containers  
+**Time**: ~3-5 minutes
+
+### Advanced Deployment  
+```yaml
+aws:
+  ecs:
+    create_secrets: true    # Enables secure secrets
+    create_efs: true       # Enables persistent storage
+```
+**Creates**: All basic resources + 6 secrets + EFS storage  
+**Time**: ~5-8 minutes
+
+## 🗂️ Container Environment Variables
+
+### Web Application
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `MODE` | `prod` | Application mode |
+| `DB_URI` | `bolt://localhost:7687` | Database connection |
+| `DB_ADMIN` | *secret* | Database password (if secrets enabled) |
+| `JWT_SECRET` | *secret* | Authentication key (if secrets enabled) |
+| `SESSION_KEY` | *secret* | Session management (if secrets enabled) |
+
+### Neo4j Database  
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `NEO4J_AUTH` | `none` | No auth (basic mode) |
+| `NEO4J_PASSWORD` | *secret* | Secure auth (advanced mode) |
 
 ### Environment Setup Helper
 
@@ -86,9 +155,10 @@ cp .env.example .env
 - Real-time status updates and feedback
 
 ### `opsagents deploy` (Direct Mode)
-Deploys the application to AWS Lightsail:
-- Creates or updates the Lightsail container service
-- Deploys the application container with health checks
+Deploys the application to AWS ECS:
+- Creates ECS cluster, service, and task definition
+- Deploys containers with Application Load Balancer
+- Sets up health checks and auto-scaling
 - Waits for the service to become ready
 - Provides the service URL when deployment is complete
 

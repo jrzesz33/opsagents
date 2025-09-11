@@ -36,7 +36,7 @@ go mod download
 
 ## Architecture Overview
 
-OpsAgents is a Claude AI-powered DevOps automation tool that integrates AWS Bedrock with AWS Lightsail for intelligent deployment workflows using pre-built Docker images.
+OpsAgents is a Claude AI-powered DevOps automation tool that deploys containerized applications to AWS ECS (Elastic Container Service) with intelligent deployment workflows using pre-built Docker images.
 
 ### Core Components
 
@@ -50,10 +50,11 @@ OpsAgents is a Claude AI-powered DevOps automation tool that integrates AWS Bedr
    - Interactive chat mode with Claude AI agent
    - Direct command execution for automated workflows
 
-3. **Deployment System** (`pkg/deploy/lightsail.go`)
-   - AWS Lightsail container service management
-   - Container deployment with health checks
+3. **ECS Deployment System** (`pkg/deploy/ecs.go`)
+   - AWS ECS container service management
+   - Container deployment with health checks and load balancing
    - Service monitoring and status reporting
+   - Advanced features: Secrets Manager integration, EFS persistent storage
 
 4. **Configuration Management** (`internal/config/config.go`)
    - YAML-based configuration with Viper
@@ -106,20 +107,203 @@ The application uses `config.yaml` for configuration. Generate with:
 Key configuration sections:
 - `claude`: AWS Bedrock and model settings
 - `images`: Docker registry and image specifications
-- `aws.lightsail`: Container service configuration
+- `aws.ecs`: ECS container service configuration
 - `auth`: Environment variable names for credentials
+
+# AWS Deployment Architecture
+
+## Complete Infrastructure Overview
+
+OpsAgents deploys a full-stack containerized application to AWS ECS with the following architecture:
+
+### AWS Components Deployed
+
+#### 1. **ECS (Elastic Container Service)**
+- **ECS Cluster** - Container orchestration cluster (Fargate)
+- **ECS Service** - Manages container instances and scaling
+- **Task Definition** - Container specifications and resource allocation
+- **Capacity Providers** - FARGATE and FARGATE_SPOT for serverless containers
+
+#### 2. **Load Balancing & Networking**
+- **Application Load Balancer (ALB)** - Internet-facing load balancer
+- **Target Group** - Routes traffic to container instances
+- **Listener** - HTTP listener on port 80
+- **VPC Integration** - Auto-discovery of default VPC and subnets
+- **Security Groups** - Network access control
+
+#### 3. **Container Applications**
+
+**Web Application Container:**
+- **Image**: Configurable via `images.app_image` (default: bigfootgolf-webapp)
+- **Port**: 8000 (configurable)
+- **CPU**: 256 units (configurable)
+- **Memory**: 512 MB (configurable)
+- **Health Check**: `/health` endpoint
+
+**Database Container (Neo4j):**
+- **Image**: Configurable via `images.neo4j_image` (default: bigfootgolf-db)
+- **Ports**: 7474 (HTTP), 7687 (Bolt)
+- **CPU**: 256 units (configurable)
+- **Memory**: 512 MB (configurable)
+- **Data Persistence**: Optional EFS volume mount
+
+#### 4. **Secrets Management (Optional)**
+When `create_secrets: true`:
+- **AWS Secrets Manager** - Secure storage for sensitive data
+- **6 Auto-Generated Secrets**:
+  - Database password (32-char auto-generated)
+  - JWT secret (64-char auto-generated)
+  - Session key (32-char auto-generated)
+  - Anthropic API key (from environment)
+  - Gmail user credential (from environment)
+  - Gmail password credential (from environment)
+
+#### 5. **Persistent Storage (Optional)**
+When `create_efs: true`:
+- **EFS File System** - Persistent storage for database
+- **Mount Targets** - In all available subnets
+- **Provisioned Throughput** - 10 MiB/s
+- **Transit Encryption** - Enabled
+- **Mount Point** - `/data` in Neo4j container
+
+#### 6. **Monitoring & Logging**
+- **CloudWatch Log Groups**:
+  - `/ecs/{task-name}-webapp` - Web application logs
+  - `/ecs/{task-name}-database` - Database logs
+- **ECS Service Events** - Container start/stop events
+- **Load Balancer Metrics** - Traffic and health metrics
+
+### Container Environment Configuration
+
+#### Web Application Environment Variables
+
+**Standard Variables (Always Set):**
+```bash
+MODE=prod                           # Application mode
+DB_URI=bolt://localhost:7687        # Database connection string
+env=production                      # Legacy environment setting
+port=8000                          # Application port
+```
+
+**Secret Variables (When create_secrets: true):**
+```bash
+DB_ADMIN                           # ← Database password secret
+JWT_SECRET                         # ← JWT authentication secret
+SESSION_KEY                        # ← Session management key
+ANTHROPIC_API_KEY                  # ← AI service key
+GMAIL_USER                         # ← Email integration user
+GMAIL_PASS                         # ← Email integration password
+```
+
+#### Database Container Environment Variables
+
+**When create_secrets: false:**
+```bash
+NEO4J_AUTH=none                    # No authentication
+```
+
+**When create_secrets: true:**
+```bash
+NEO4J_PASSWORD                     # ← Database password secret
+```
+
+### Networking Configuration
+
+#### VPC & Subnets
+- **Auto-Discovery**: Uses default VPC if not specified
+- **Multi-AZ Deployment**: Deploys across all available subnets
+- **Public IP Assignment**: Enabled for internet access
+
+#### Security Groups
+- **Default Security Group**: Used if not specified
+- **Port Access**: 
+  - ALB: Port 80 (HTTP)
+  - Containers: Internal communication only
+
+#### Load Balancer Configuration
+- **Scheme**: Internet-facing
+- **Type**: Application Load Balancer
+- **Health Check**: HTTP `/health` endpoint
+- **Health Check Settings**:
+  - Interval: 30 seconds
+  - Healthy threshold: 2 checks
+  - Unhealthy threshold: 3 checks
 
 ## AWS Permissions
 
 Required AWS IAM permissions:
+
+### Core ECS Permissions
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:*",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSubnets", 
+        "ec2:DescribeSecurityGroups",
+        "elasticloadbalancing:*",
+        "logs:CreateLogGroup",
+        "logs:DeleteLogGroup",
+        "iam:PassRole"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+### Advanced Features Permissions
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "secretsmanager:*",
+    "elasticfilesystem:*"
+  ],
+  "Resource": "*"
+}
+```
+
+### Claude AI Integration
 - **Bedrock**: `bedrock:InvokeModel`, `bedrock:ListFoundationModels`
-- **Lightsail**: `lightsail:CreateContainerService`, `lightsail:CreateContainerServiceDeployment`, `lightsail:GetContainerServices`
 
-## Docker Images
+## Deployment Flow
 
-Deploys pre-built Docker images from external registries:
-1. **Application Image**: Configured via `images.app_image` setting
-2. **Neo4j Database Image**: Configured via `images.neo4j_image` setting (default: neo4j:5-community)
+### 1. **Basic Deployment** (`create_secrets: false`, `create_efs: false`)
+```bash
+./build/opsagents deploy
+```
+
+**Resources Created:**
+- ECS Cluster + Service + Task Definition
+- Application Load Balancer + Target Group + Listener
+- CloudWatch Log Groups
+- 2 Containers: Web app + Neo4j database
+
+**Timeline:** ~3-5 minutes
+
+### 2. **Advanced Deployment** (`create_secrets: true`, `create_efs: true`)
+```bash
+./build/opsagents deploy
+```
+
+**Resources Created:**
+- All basic deployment resources
+- 6 AWS Secrets Manager secrets
+- EFS file system with mount targets
+- Enhanced security and persistence
+
+**Timeline:** ~5-8 minutes
+
+### 3. **Auto-Discovery Features**
+- **VPC/Subnets**: Automatically finds default VPC and all subnets
+- **Security Groups**: Uses default security group if none specified
+- **Resource Reuse**: Reuses existing load balancers and target groups
+- **Health Checks**: Waits for service stability before completion
 
 ## Testing and Linting
 
